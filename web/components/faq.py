@@ -41,6 +41,8 @@ def load_faq_content(language: str) -> Optional[str]:
     
     if language.startswith("zh"):
         faq_file = project_root / "docs" / "FAQ_CN.md"
+    elif language.startswith("vi"):
+        faq_file = project_root / "docs" / "FAQ_VI.md"
     else:
         faq_file = project_root / "docs" / "FAQ.md"
     

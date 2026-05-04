@@ -257,7 +257,7 @@ def render_advanced_settings():
                 st.caption(
                     f"{tr('settings.comfyui.runninghub_hint')} "
                     f"[{tr('settings.comfyui.runninghub_get_api_key')}]"
-                    f"(https://www.runninghub{'.cn' if get_language() == 'zh_CN' else '.ai'}/?inviteCode=bozpdlbj)"
+                    f"(https://www.runninghub{'.cn' if get_language() == 'zh_CN' else '.ai'}/?inviteCode=bozpdlbj)"  # noqa: E501
                 )
                 
                 # RunningHub concurrent limit and instance type (in one row)

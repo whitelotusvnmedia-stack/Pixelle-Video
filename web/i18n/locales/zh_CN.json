@@ -225,6 +225,8 @@
     "tts.voice_selector": "音色选择",
     "tts.speed": "语速",
     "tts.speed_label": "{speed}x",
+    "tts.voice.vi_VN_HoaiMyNeural": "VN 女声-温柔（HoaiMy）",
+    "tts.voice.vi_VN_NamMinhNeural": "VN 男声-自然（NamMinh）",
     "tts.voice.zh_CN_XiaoxiaoNeural": "女声-温柔（晓晓）",
     "tts.voice.zh_CN_XiaoyiNeural": "女声-甜美（晓伊）",
     "tts.voice.zh_CN_YunjianNeural": "男声-专业（云健）",

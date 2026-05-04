@@ -225,6 +225,8 @@
     "tts.voice_selector": "Voice Selection",
     "tts.speed": "Speed",
     "tts.speed_label": "{speed}x",
+    "tts.voice.vi_VN_HoaiMyNeural": "VI Female-Gentle (HoaiMy)",
+    "tts.voice.vi_VN_NamMinhNeural": "VI Male-Natural (NamMinh)",
     "tts.voice.zh_CN_XiaoxiaoNeural": "zh-CN-XiaoxiaoNeural",
     "tts.voice.zh_CN_XiaoyiNeural": "zh-CN-XiaoyiNeural",
     "tts.voice.zh_CN_YunjianNeural": "zh-CN-YunjianNeural",

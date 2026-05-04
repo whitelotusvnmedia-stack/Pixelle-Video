@@ -21,6 +21,19 @@ from typing import List, Dict, Any
 
 # Edge TTS voice presets for local inference
 EDGE_TTS_VOICES: List[Dict[str, Any]] = [
+    # Vietnamese voices
+    {
+        "id": "vi-VN-HoaiMyNeural",
+        "label_key": "tts.voice.vi_VN_HoaiMyNeural",
+        "locale": "vi-VN",
+        "gender": "female"
+    },
+    {
+        "id": "vi-VN-NamMinhNeural",
+        "label_key": "tts.voice.vi_VN_NamMinhNeural",
+        "locale": "vi-VN",
+        "gender": "male"
+    },
     # Chinese voices
     {
         "id": "zh-CN-XiaoxiaoNeural",
@@ -213,8 +226,8 @@ def get_voice_display_name(voice_id: str, tr_func=None, locale: str = "zh_CN") -
     if not voice_config:
         return voice_id
     
-    # If Chinese locale and translation function available, use translated label
-    if locale == "zh_CN" and tr_func:
+    # If Chinese/Vietnamese locale and translation function available, use translated label
+    if locale in ("zh_CN", "vi_VN") and tr_func:
         label_key = voice_config["label_key"]
         return tr_func(label_key)
     

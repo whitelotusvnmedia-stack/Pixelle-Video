@@ -18,7 +18,7 @@ if errorlevel 1 (
     echo   For Regular Users:
     echo ========================================
     echo Please download the ONE-CLICK PACKAGE from:
-    echo https://github.com/AIDC-AI/Pixelle-Video/releases
+    echo https://github.com/whitelotusvnmedia-stack/Pixelle-Video/releases
     echo.
     echo The one-click package includes:
     echo   ✓ Pre-configured Python environment

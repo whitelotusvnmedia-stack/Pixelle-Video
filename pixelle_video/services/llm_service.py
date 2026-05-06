@@ -24,6 +24,8 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel
 from loguru import logger
 
+from pixelle_video.utils.api_key_rotation import APIKeyRotator, is_quota_error
+
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -65,6 +67,8 @@ class LLMService:
         # Note: We no longer cache config here to support hot reload
         # Config is read dynamically from config_manager in _get_config_value()
         self._client: Optional[AsyncOpenAI] = None
+        self._rotator: Optional[APIKeyRotator] = None
+        self._rotator_keys_hash: Optional[str] = None
     
     def _get_config_value(self, key: str, default=None):
         """
@@ -159,9 +163,6 @@ class LLMService:
             )
             print(review.title)  # Structured access
         """
-        # Create client (new instance each time to support parameter overrides)
-        client = self._create_client(api_key=api_key, base_url=base_url)
-        
         # Get model (priority: parameter > config)
         final_model = (
             model
@@ -169,44 +170,101 @@ class LLMService:
             or "gpt-3.5-turbo"  # Default fallback
         )
         
-        logger.debug(f"LLM call: model={final_model}, base_url={client.base_url}, response_type={response_type}")
+        # Get system prompt from config if available
+        system_prompt = self._get_config_value("system_prompt", "")
+        
+        # Build messages list
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        
+        # Use key rotation if no explicit api_key is provided
+        if api_key:
+            return await self._call_once(
+                api_key=api_key, base_url=base_url, model=final_model,
+                messages=messages, temperature=temperature, max_tokens=max_tokens,
+                response_type=response_type, **kwargs
+            )
+        
+        # Key rotation: try each key until one works
+        rotator = self._get_rotator()
+        max_retries = rotator.total_keys if rotator.total_keys > 1 else 1
+        last_error = None
+        
+        for attempt in range(max_retries):
+            current_key = rotator.get_key()
+            try:
+                return await self._call_once(
+                    api_key=current_key, base_url=base_url, model=final_model,
+                    messages=messages, temperature=temperature, max_tokens=max_tokens,
+                    response_type=response_type, **kwargs
+                )
+            except Exception as e:
+                last_error = e
+                if is_quota_error(e) and rotator.total_keys > 1:
+                    logger.warning(f"API key quota error (attempt {attempt + 1}/{max_retries}), rotating...")
+                    rotator.mark_exhausted(current_key)
+                else:
+                    raise
+        
+        raise last_error  # type: ignore[misc]
+    
+    def _get_rotator(self) -> APIKeyRotator:
+        """Get or create API key rotator, refreshing if keys changed."""
+        keys_str = self._get_config_value("api_key", "")
+        keys_hash = hash(keys_str)
+        if self._rotator is None or self._rotator_keys_hash != keys_hash:
+            self._rotator = APIKeyRotator(keys_str)
+            self._rotator_keys_hash = keys_hash
+        return self._rotator
+    
+    async def _call_once(
+        self,
+        api_key: str,
+        base_url: Optional[str],
+        model: str,
+        messages: list,
+        temperature: float,
+        max_tokens: int,
+        response_type: Optional[Type[T]] = None,
+        **kwargs
+    ) -> Union[str, T]:
+        """Execute a single LLM call with specific credentials."""
+        client = self._create_client(api_key=api_key, base_url=base_url)
+        logger.debug(f"LLM call: model={model}, base_url={client.base_url}, response_type={response_type}")
         
         try:
             if response_type is not None:
-                # Structured output mode - try beta.chat.completions.parse first
                 return await self._call_with_structured_output(
                     client=client,
-                    model=final_model,
-                    prompt=prompt,
+                    model=model,
+                    messages=messages,
                     response_type=response_type,
                     temperature=temperature,
                     max_tokens=max_tokens,
                     **kwargs
                 )
             else:
-                # Standard text output mode
                 response = await client.chat.completions.create(
-                    model=final_model,
-                    messages=[{"role": "user", "content": prompt}],
+                    model=model,
+                    messages=messages,
                     temperature=temperature,
                     max_tokens=max_tokens,
                     **kwargs
                 )
-                
                 result = response.choices[0].message.content
                 logger.debug(f"LLM response length: {len(result)} chars")
-                
                 return result
-        
         except Exception as e:
-            logger.error(f"LLM call error (model={final_model}, base_url={client.base_url}): {e}")
+            logger.error(f"LLM call error (model={model}, base_url={client.base_url}): {e}")
             raise
     
     async def _call_with_structured_output(
         self,
         client: AsyncOpenAI,
         model: str,
-        prompt: str,
+        messages: list,
         response_type: Type[T],
         temperature: float,
         max_tokens: int,
@@ -217,27 +275,20 @@ class LLMService:
         
         Uses JSON schema instruction appended to prompt for maximum compatibility
         across all OpenAI-compatible providers (Qwen, DeepSeek, etc.).
-        
-        Args:
-            client: OpenAI client
-            model: Model name
-            prompt: The prompt
-            response_type: Pydantic model class
-            temperature: Sampling temperature
-            max_tokens: Max tokens
-            **kwargs: Additional parameters
-        
-        Returns:
-            Parsed Pydantic model instance
         """
-        # Build JSON schema instruction and append to prompt
+        # Build JSON schema instruction and append to last user message
         json_schema_instruction = self._get_json_schema_instruction(response_type)
-        enhanced_prompt = f"{prompt}\n\n{json_schema_instruction}"
+        enhanced_messages = list(messages)
+        if enhanced_messages and enhanced_messages[-1]["role"] == "user":
+            enhanced_messages[-1] = {
+                "role": "user",
+                "content": f"{enhanced_messages[-1]['content']}\n\n{json_schema_instruction}"
+            }
         
-        # Call LLM with enhanced prompt
+        # Call LLM with enhanced messages
         response = await client.chat.completions.create(
             model=model,
-            messages=[{"role": "user", "content": enhanced_prompt}],
+            messages=enhanced_messages,
             temperature=temperature,
             max_tokens=max_tokens,
             **kwargs

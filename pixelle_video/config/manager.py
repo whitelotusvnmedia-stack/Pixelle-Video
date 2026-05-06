@@ -112,15 +112,17 @@ class ConfigManager:
             "api_key": self.config.llm.api_key,
             "base_url": self.config.llm.base_url,
             "model": self.config.llm.model,
+            "system_prompt": self.config.llm.system_prompt,
         }
     
-    def set_llm_config(self, api_key: str, base_url: str, model: str):
+    def set_llm_config(self, api_key: str, base_url: str, model: str, system_prompt: str = ""):
         """Set LLM configuration"""
         self.update({
             "llm": {
                 "api_key": api_key,
                 "base_url": base_url,
                 "model": model,
+                "system_prompt": system_prompt,
             }
         })
     
@@ -133,7 +135,18 @@ class ConfigManager:
             "runninghub_concurrent_limit": self.config.comfyui.runninghub_concurrent_limit,
             "runninghub_instance_type": self.config.comfyui.runninghub_instance_type,
             "tts": {
+                "inference_mode": self.config.comfyui.tts.inference_mode,
                 "default_workflow": self.config.comfyui.tts.default_workflow,
+                "local": {
+                    "provider": self.config.comfyui.tts.local.provider,
+                    "voice": self.config.comfyui.tts.local.voice,
+                    "speed": self.config.comfyui.tts.local.speed,
+                    "tts_api_key": self.config.comfyui.tts.local.tts_api_key,
+                    "tts_model": self.config.comfyui.tts.local.tts_model,
+                },
+                "comfyui": {
+                    "default_workflow": self.config.comfyui.tts.comfyui.default_workflow,
+                },
             },
             "image": {
                 "default_workflow": self.config.comfyui.image.default_workflow,

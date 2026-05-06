@@ -97,14 +97,19 @@ def render_advanced_settings():
                 
                 st.markdown("---")
                 
-                # API Key (use unique key to force refresh when switching preset)
-                llm_api_key = st.text_input(
+                # API Key(s) - supports multiple keys for rotation
+                from pixelle_video.utils.api_key_rotation import parse_api_keys
+                llm_api_key = st.text_area(
                     f"{tr('settings.llm.api_key')} *",
                     value=default_api_key,
-                    type="password",
+                    height=68,
                     help=tr("settings.llm.api_key_help"),
                     key=f"llm_api_key_input_{selected_preset}"
                 )
+                # Show key count if multiple keys entered
+                key_count = len(parse_api_keys(llm_api_key))
+                if key_count > 1:
+                    st.caption(tr("settings.llm.api_key_count").replace("{count}", str(key_count)))
                 
                 # Base URL (use unique key based on preset to force refresh)
                 llm_base_url = st.text_input(
@@ -165,8 +170,9 @@ def render_advanced_settings():
                     if llm_api_key and llm_base_url:
                         try:
                             from pixelle_video.utils.llm_util import fetch_available_models
+                            first_key = parse_api_keys(llm_api_key)[0] if parse_api_keys(llm_api_key) else llm_api_key
                             with st.spinner(tr("settings.llm.loading_models")):
-                                models = fetch_available_models(llm_api_key, llm_base_url)
+                                models = fetch_available_models(first_key, llm_base_url)
                                 st.session_state.llm_loaded_models = models
                                 st.success(tr("settings.llm.models_loaded").replace("{count}", str(len(models))))
                                 safe_rerun()
@@ -180,8 +186,9 @@ def render_advanced_settings():
                     if llm_api_key and llm_base_url:
                         try:
                             from pixelle_video.utils.llm_util import test_llm_connection
+                            first_key = parse_api_keys(llm_api_key)[0] if parse_api_keys(llm_api_key) else llm_api_key
                             with st.spinner(tr("settings.llm.loading_models")):
-                                success, message, model_count = test_llm_connection(llm_api_key, llm_base_url)
+                                success, message, model_count = test_llm_connection(first_key, llm_base_url)
                                 if success:
                                     st.success(tr("settings.llm.connection_success").replace("{count}", str(model_count)))
                                 else:
@@ -201,6 +208,19 @@ def render_advanced_settings():
                     )
                 else:
                     llm_model = selected_model_option
+                
+                # System Prompt / AI Role
+                st.markdown("---")
+                st.markdown(f"**{tr('settings.llm.system_prompt_title')}**")
+                current_system_prompt = current_llm.get("system_prompt", "")
+                llm_system_prompt = st.text_area(
+                    tr("settings.llm.system_prompt"),
+                    value=current_system_prompt,
+                    height=100,
+                    placeholder=tr("settings.llm.system_prompt_placeholder"),
+                    help=tr("settings.llm.system_prompt_help"),
+                    key=f"llm_system_prompt_input_{selected_preset}"
+                )
         
         # ====================================================================
         # Column 2: ComfyUI Settings
@@ -303,7 +323,7 @@ def render_advanced_settings():
                     if not (llm_api_key and llm_base_url and llm_model):
                         st.error(tr("status.llm_config_incomplete"))
                     else:
-                        config_manager.set_llm_config(llm_api_key, llm_base_url, llm_model)
+                        config_manager.set_llm_config(llm_api_key, llm_base_url, llm_model, llm_system_prompt)
                     
                     # Save ComfyUI configuration (optional fields, always save what's provided)
                     # Convert checkbox to instance type: True -> "plus", False -> ""

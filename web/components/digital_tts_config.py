@@ -64,76 +64,83 @@ def render_style_config(pixelle_video):
         if tts_mode == "local":
             # Import voice configuration
             from pixelle_video.tts_voices import EDGE_TTS_VOICES, get_voice_display_name
+            from pixelle_video.utils.tts_providers import TTS_PROVIDERS, get_provider_info
             
-            # Get saved voice from config
+            # Get saved config
             local_config = tts_config.get("local", {})
             saved_voice = local_config.get("voice", "vi-VN-HoaiMyNeural")
             saved_speed = local_config.get("speed", 1.2)
+            saved_provider = local_config.get("provider", "edge_tts")
             
-            # Build voice options with i18n + custom option
-            voice_options = []
-            voice_ids = []
-            default_voice_index = 0
-            custom_voice_label = tr("tts.voice.custom", fallback="Custom Voice ID...")
+            # TTS Provider selection
+            provider_ids = [p["id"] for p in TTS_PROVIDERS]
+            provider_names = [p["name"] for p in TTS_PROVIDERS]
+            provider_default = provider_ids.index(saved_provider) if saved_provider in provider_ids else 0
             
-            for idx, voice_config in enumerate(EDGE_TTS_VOICES):
-                voice_id = voice_config["id"]
-                display_name = get_voice_display_name(voice_id, tr, get_language())
-                voice_options.append(display_name)
-                voice_ids.append(voice_id)
+            selected_provider_name = st.selectbox(
+                tr("tts.provider", fallback="TTS Provider"),
+                provider_names,
+                index=provider_default,
+                key="digital_tts_provider_select"
+            )
+            selected_provider = provider_ids[provider_names.index(selected_provider_name)]
+            
+            # Voice and speed for Edge TTS
+            if selected_provider == "edge_tts":
+                voice_options = []
+                voice_ids = []
+                default_voice_index = 0
+                custom_voice_label = tr("tts.voice.custom", fallback="Custom Voice ID...")
                 
-                # Set default index if matches saved voice
-                if voice_id == saved_voice:
-                    default_voice_index = idx
-            
-            # Add custom voice option at the end
-            voice_options.append(custom_voice_label)
-            voice_ids.append("__custom__")
-            
-            # If saved voice not in presets, select custom
-            if saved_voice not in [v["id"] for v in EDGE_TTS_VOICES]:
-                default_voice_index = len(voice_options) - 1
-            
-            # Two-column layout: Voice | Speed
-            voice_col, speed_col = st.columns([1, 1])
-            
-            with voice_col:
-                # Voice selector
-                selected_voice_display = st.selectbox(
-                    tr("tts.voice_selector"),
-                    voice_options,
-                    index=default_voice_index,
-                    key="digital_tts_local_voice"
-                )
+                for idx, voice_config in enumerate(EDGE_TTS_VOICES):
+                    voice_id = voice_config["id"]
+                    display_name = get_voice_display_name(voice_id, tr, get_language())
+                    voice_options.append(display_name)
+                    voice_ids.append(voice_id)
+                    if voice_id == saved_voice:
+                        default_voice_index = idx
                 
-                # Get actual voice ID
-                selected_voice_index = voice_options.index(selected_voice_display)
-                selected_voice = voice_ids[selected_voice_index]
+                voice_options.append(custom_voice_label)
+                voice_ids.append("__custom__")
+                if saved_voice not in [v["id"] for v in EDGE_TTS_VOICES]:
+                    default_voice_index = len(voice_options) - 1
                 
-                # Show custom voice input if custom selected
-                if selected_voice == "__custom__":
-                    custom_voice_id = st.text_input(
-                        tr("tts.voice.custom_input", fallback="Edge TTS Voice ID"),
-                        value=saved_voice if saved_voice not in [v["id"] for v in EDGE_TTS_VOICES] else "",
-                        placeholder="vi-VN-HoaiMyNeural",
-                        help=tr("tts.voice.custom_help", fallback="Enter any Edge TTS voice ID, e.g. vi-VN-HoaiMyNeural"),
-                        key="digital_tts_custom_voice_id"
+                voice_col, speed_col = st.columns([1, 1])
+                with voice_col:
+                    selected_voice_display = st.selectbox(
+                        tr("tts.voice_selector"), voice_options,
+                        index=default_voice_index, key="digital_tts_local_voice"
                     )
-                    if custom_voice_id:
-                        selected_voice = custom_voice_id
-            
-            with speed_col:
-                # Speed slider
-                tts_speed = st.slider(
-                    tr("tts.speed"),
-                    min_value=0.5,
-                    max_value=2.0,
-                    value=saved_speed,
-                    step=0.1,
-                    format="%.1fx",
-                    key="digital_tts_local_speed"
-                )
-                st.caption(tr("tts.speed_label", speed=f"{tts_speed:.1f}"))
+                    selected_voice_index = voice_options.index(selected_voice_display)
+                    selected_voice = voice_ids[selected_voice_index]
+                    if selected_voice == "__custom__":
+                        custom_voice_id = st.text_input(
+                            tr("tts.voice.custom_input", fallback="Edge TTS Voice ID"),
+                            value=saved_voice if saved_voice not in [v["id"] for v in EDGE_TTS_VOICES] else "",
+                            placeholder="vi-VN-HoaiMyNeural",
+                            key="digital_tts_custom_voice_id"
+                        )
+                        if custom_voice_id:
+                            selected_voice = custom_voice_id
+                with speed_col:
+                    tts_speed = st.slider(
+                        tr("tts.speed"), min_value=0.5, max_value=2.0,
+                        value=saved_speed, step=0.1, format="%.1fx",
+                        key="digital_tts_local_speed"
+                    )
+            else:
+                voice_col, speed_col = st.columns([1, 1])
+                with voice_col:
+                    selected_voice = st.text_input(
+                        tr("tts.voice_selector"), value=saved_voice,
+                        key="digital_tts_local_voice"
+                    )
+                with speed_col:
+                    tts_speed = st.slider(
+                        tr("tts.speed"), min_value=0.5, max_value=2.0,
+                        value=saved_speed, step=0.1, format="%.1fx",
+                        key="digital_tts_local_speed"
+                    )
             
             # Variables for video generation
             tts_workflow_key = None

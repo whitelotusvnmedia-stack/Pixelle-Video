@@ -21,15 +21,19 @@ from pydantic import BaseModel, Field
 
 class LLMConfig(BaseModel):
     """LLM configuration"""
-    api_key: str = Field(default="", description="LLM API Key")
+    api_key: str = Field(default="", description="LLM API Key(s), multiple keys separated by semicolons for rotation")
     base_url: str = Field(default="", description="LLM API Base URL")
     model: str = Field(default="", description="LLM Model Name")
+    system_prompt: str = Field(default="", description="Custom system prompt for AI role/behavior")
 
 
 class TTSLocalConfig(BaseModel):
-    """Local TTS configuration (Edge TTS)"""
-    voice: str = Field(default="zh-CN-YunjianNeural", description="Edge TTS voice ID")
+    """Local TTS configuration (multi-provider)"""
+    provider: str = Field(default="edge_tts", description="TTS provider: edge_tts, openai_tts, google_tts, elevenlabs")
+    voice: str = Field(default="zh-CN-YunjianNeural", description="Voice ID (provider-specific)")
     speed: float = Field(default=1.2, ge=0.5, le=2.0, description="Speech speed multiplier (0.5-2.0)")
+    tts_api_key: str = Field(default="", description="API key for paid TTS providers (OpenAI/Google/ElevenLabs)")
+    tts_model: str = Field(default="", description="TTS model (provider-specific, e.g. tts-1, eleven_multilingual_v2)")
 
 
 class TTSComfyUIConfig(BaseModel):

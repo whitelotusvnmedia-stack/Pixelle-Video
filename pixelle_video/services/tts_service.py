@@ -144,54 +144,71 @@ class TTSService(ComfyBaseService):
         voice: Optional[str] = None,
         speed: Optional[float] = None,
         output_path: Optional[str] = None,
+        **params
     ) -> str:
         """
-        Generate speech using local Edge TTS
+        Generate speech using local TTS provider (Edge TTS, OpenAI, Google, ElevenLabs)
         
-        Args:
-            text: Text to convert to speech
-            voice: Edge TTS voice ID (default: from config)
-            speed: Speech speed multiplier (default: from config)
-            output_path: Custom output path (auto-generated if None)
-        
-        Returns:
-            Generated audio file path
+        The provider is determined by config tts.local.provider (default: edge_tts).
         """
         # Get config defaults
         local_config = self.config.get("local", {})
+        provider = params.get("provider") or local_config.get("provider", "edge_tts")
         
         # Determine voice and speed (param > config)
         final_voice = voice or local_config.get("voice", "zh-CN-YunjianNeural")
         final_speed = speed if speed is not None else local_config.get("speed", 1.2)
         
-        # Convert speed to rate parameter
-        rate = speed_to_rate(final_speed)
-        
-        logger.info(f"🎙️  Using local Edge TTS: voice={final_voice}, speed={final_speed}x (rate={rate})")
-        
         # Generate output path if not provided
         if not output_path:
-            # Generate unique filename
             unique_id = uuid.uuid4().hex
             output_path = f"output/{unique_id}.mp3"
-            
-            # Ensure output directory exists
             Path("output").mkdir(parents=True, exist_ok=True)
         
-        # Call Edge TTS
         try:
-            audio_bytes = await edge_tts(
-                text=text,
-                voice=final_voice,
-                rate=rate,
-                output_path=output_path
-            )
-            
-            logger.info(f"✅ Generated audio (local Edge TTS): {output_path}")
-            return output_path
+            if provider == "openai_tts":
+                from pixelle_video.utils.tts_providers import openai_tts
+                tts_api_key = local_config.get("tts_api_key", "")
+                tts_model = local_config.get("tts_model", "tts-1")
+                logger.info(f"🎙️  Using OpenAI TTS: voice={final_voice}, model={tts_model}")
+                return await openai_tts(
+                    text=text, api_key=tts_api_key,
+                    voice=final_voice, model=tts_model,
+                    speed=final_speed, output_path=output_path,
+                )
+            elif provider == "google_tts":
+                from pixelle_video.utils.tts_providers import google_cloud_tts
+                tts_api_key = local_config.get("tts_api_key", "")
+                lang_code = final_voice.rsplit("-", 1)[0] if "-" in final_voice else "en-US"
+                logger.info(f"🎙️  Using Google Cloud TTS: voice={final_voice}, lang={lang_code}")
+                return await google_cloud_tts(
+                    text=text, api_key=tts_api_key,
+                    voice=final_voice, language_code=lang_code,
+                    speed=final_speed, output_path=output_path,
+                )
+            elif provider == "elevenlabs":
+                from pixelle_video.utils.tts_providers import elevenlabs_tts
+                tts_api_key = local_config.get("tts_api_key", "")
+                tts_model = local_config.get("tts_model", "eleven_multilingual_v2")
+                logger.info(f"🎙️  Using ElevenLabs: voice_id={final_voice}, model={tts_model}")
+                return await elevenlabs_tts(
+                    text=text, api_key=tts_api_key,
+                    voice_id=final_voice, model_id=tts_model,
+                    speed=final_speed, output_path=output_path,
+                )
+            else:
+                # Default: Edge TTS (free, no API key)
+                rate = speed_to_rate(final_speed)
+                logger.info(f"🎙️  Using Edge TTS: voice={final_voice}, speed={final_speed}x (rate={rate})")
+                await edge_tts(
+                    text=text, voice=final_voice,
+                    rate=rate, output_path=output_path,
+                )
+                logger.info(f"Generated audio (Edge TTS): {output_path}")
+                return output_path
         
         except Exception as e:
-            logger.error(f"Local TTS generation error: {e}")
+            logger.error(f"TTS generation error ({provider}): {e}")
             raise
     
     async def _call_comfyui_workflow(

@@ -65,89 +65,195 @@ def render_style_config(pixelle_video):
         if tts_mode == "local":
             # Import voice configuration
             from pixelle_video.tts_voices import EDGE_TTS_VOICES, get_voice_display_name
+            from pixelle_video.utils.tts_providers import TTS_PROVIDERS, get_provider_info
             
-            # Get saved voice from config
+            # Get saved config
             local_config = tts_config.get("local", {})
             saved_voice = local_config.get("voice", "vi-VN-HoaiMyNeural")
             saved_speed = local_config.get("speed", 1.2)
+            saved_provider = local_config.get("provider", "edge_tts")
+            saved_tts_api_key = local_config.get("tts_api_key", "")
+            saved_tts_model = local_config.get("tts_model", "")
             
-            # Build voice options with i18n + custom option
-            voice_options = []
-            voice_ids = []
-            default_voice_index = 0
-            custom_voice_label = tr("tts.voice.custom", fallback="Custom Voice ID...")
+            # TTS Provider selection
+            provider_ids = [p["id"] for p in TTS_PROVIDERS]
+            provider_names = [p["name"] for p in TTS_PROVIDERS]
+            provider_default = provider_ids.index(saved_provider) if saved_provider in provider_ids else 0
             
-            for idx, voice_config in enumerate(EDGE_TTS_VOICES):
-                voice_id = voice_config["id"]
-                display_name = get_voice_display_name(voice_id, tr, get_language())
-                voice_options.append(display_name)
-                voice_ids.append(voice_id)
-                
-                # Set default index if matches saved voice
-                if voice_id == saved_voice:
-                    default_voice_index = idx
+            tts_provider_col, tts_key_col = st.columns([1, 1])
             
-            # Add custom voice option at the end
-            voice_options.append(custom_voice_label)
-            voice_ids.append("__custom__")
-            
-            # If saved voice not in presets, select custom
-            if saved_voice not in [v["id"] for v in EDGE_TTS_VOICES]:
-                default_voice_index = len(voice_options) - 1
-            
-            # Three-column layout: Voice | Custom Input | Speed
-            voice_col, speed_col = st.columns([1, 1])
-            
-            with voice_col:
-                # Voice selector
-                selected_voice_display = st.selectbox(
-                    tr("tts.voice_selector"),
-                    voice_options,
-                    index=default_voice_index,
-                    key="tts_local_voice"
+            with tts_provider_col:
+                selected_provider_name = st.selectbox(
+                    tr("tts.provider", fallback="TTS Provider"),
+                    provider_names,
+                    index=provider_default,
+                    key="tts_provider_select"
                 )
-                
-                # Get actual voice ID
-                selected_voice_index = voice_options.index(selected_voice_display)
-                selected_voice = voice_ids[selected_voice_index]
-                
-                # Show custom voice input if custom selected
-                if selected_voice == "__custom__":
-                    custom_voice_id = st.text_input(
-                        tr("tts.voice.custom_input", fallback="Edge TTS Voice ID"),
-                        value=saved_voice if saved_voice not in [v["id"] for v in EDGE_TTS_VOICES] else "",
-                        placeholder="vi-VN-HoaiMyNeural",
-                        help=tr("tts.voice.custom_help", fallback="Enter any Edge TTS voice ID, e.g. vi-VN-HoaiMyNeural"),
-                        key="tts_custom_voice_id"
-                    )
-                    if custom_voice_id:
-                        selected_voice = custom_voice_id
+                selected_provider = provider_ids[provider_names.index(selected_provider_name)]
             
-            with speed_col:
-                # Speed slider
-                tts_speed = st.slider(
-                    tr("tts.speed"),
-                    min_value=0.5,
-                    max_value=2.0,
-                    value=saved_speed,
-                    step=0.1,
-                    format="%.1fx",
-                    key="tts_local_speed"
+            with tts_key_col:
+                provider_info = get_provider_info(selected_provider)
+                if provider_info and provider_info.get("needs_api_key"):
+                    tts_api_key = st.text_input(
+                        tr("tts.provider_api_key", fallback="TTS API Key"),
+                        value=saved_tts_api_key,
+                        type="password",
+                        key="tts_provider_api_key"
+                    )
+                    if provider_info.get("api_key_url"):
+                        st.caption(f"🔑 [{tr('settings.llm.get_api_key')}]({provider_info['api_key_url']})")
+                else:
+                    tts_api_key = ""
+                    st.caption(tr("tts.provider_free", fallback="Free - no API key needed"))
+            
+            # Provider-specific model selection
+            tts_model_value = ""
+            if selected_provider == "openai_tts":
+                models = provider_info.get("models", ["tts-1", "tts-1-hd", "gpt-4o-mini-tts"])
+                default_model_idx = models.index(saved_tts_model) if saved_tts_model in models else 0
+                tts_model_value = st.selectbox(
+                    tr("tts.provider_model", fallback="TTS Model"),
+                    models,
+                    index=default_model_idx,
+                    key="tts_provider_model"
                 )
-                st.caption(tr("tts.speed_label", speed=f"{tts_speed:.1f}"))
+            elif selected_provider == "elevenlabs":
+                el_models = ["eleven_multilingual_v2", "eleven_turbo_v2_5", "eleven_monolingual_v1"]
+                default_el_idx = el_models.index(saved_tts_model) if saved_tts_model in el_models else 0
+                tts_model_value = st.selectbox(
+                    tr("tts.provider_model", fallback="TTS Model"),
+                    el_models,
+                    index=default_el_idx,
+                    key="tts_provider_model"
+                )
             
-            # Auto-detect language and suggest voice
-            from pixelle_video.lang_detect import detect_language, suggest_voice, get_language_name
-            script_text = st.session_state.get("content_text", "")
-            if script_text and len(script_text.strip()) > 10:
-                detected_lang = detect_language(script_text)
-                suggested_voice = suggest_voice(script_text, gender="female")
-                lang_name = get_language_name(detected_lang)
-                if suggested_voice and suggested_voice != selected_voice:
-                    st.info(
-                        f"🌐 {tr('tts.auto_detect_hint', fallback='Detected script language')}: **{lang_name}** → "
-                        f"{tr('tts.suggested_voice', fallback='Suggested voice')}: `{suggested_voice}`"
+            # Voice selection (Edge TTS uses dropdown, others use text input)
+            if selected_provider == "edge_tts":
+                # Build voice options with i18n + custom option
+                voice_options = []
+                voice_ids = []
+                default_voice_index = 0
+                custom_voice_label = tr("tts.voice.custom", fallback="Custom Voice ID...")
+                
+                for idx, voice_config in enumerate(EDGE_TTS_VOICES):
+                    voice_id = voice_config["id"]
+                    display_name = get_voice_display_name(voice_id, tr, get_language())
+                    voice_options.append(display_name)
+                    voice_ids.append(voice_id)
+                    
+                    if voice_id == saved_voice:
+                        default_voice_index = idx
+                
+                voice_options.append(custom_voice_label)
+                voice_ids.append("__custom__")
+                
+                if saved_voice not in [v["id"] for v in EDGE_TTS_VOICES]:
+                    default_voice_index = len(voice_options) - 1
+                
+                voice_col, speed_col = st.columns([1, 1])
+                
+                with voice_col:
+                    selected_voice_display = st.selectbox(
+                        tr("tts.voice_selector"),
+                        voice_options,
+                        index=default_voice_index,
+                        key="tts_local_voice"
                     )
+                    selected_voice_index = voice_options.index(selected_voice_display)
+                    selected_voice = voice_ids[selected_voice_index]
+                    
+                    if selected_voice == "__custom__":
+                        custom_voice_id = st.text_input(
+                            tr("tts.voice.custom_input", fallback="Edge TTS Voice ID"),
+                            value=saved_voice if saved_voice not in [v["id"] for v in EDGE_TTS_VOICES] else "",
+                            placeholder="vi-VN-HoaiMyNeural",
+                            help=tr("tts.voice.custom_help", fallback="Enter any Edge TTS voice ID"),
+                            key="tts_custom_voice_id"
+                        )
+                        if custom_voice_id:
+                            selected_voice = custom_voice_id
+                
+                with speed_col:
+                    tts_speed = st.slider(
+                        tr("tts.speed"),
+                        min_value=0.5,
+                        max_value=2.0,
+                        value=saved_speed,
+                        step=0.1,
+                        format="%.1fx",
+                        key="tts_local_speed"
+                    )
+                    st.caption(tr("tts.speed_label", speed=f"{tts_speed:.1f}"))
+            
+            elif selected_provider == "openai_tts":
+                voices = provider_info.get("voices", [])
+                voice_col, speed_col = st.columns([1, 1])
+                with voice_col:
+                    default_v = voices.index(saved_voice) if saved_voice in voices else 0
+                    selected_voice = st.selectbox(
+                        tr("tts.voice_selector"),
+                        voices,
+                        index=default_v,
+                        key="tts_local_voice"
+                    )
+                with speed_col:
+                    tts_speed = st.slider(
+                        tr("tts.speed"), min_value=0.25, max_value=4.0,
+                        value=saved_speed, step=0.05, format="%.2fx",
+                        key="tts_local_speed"
+                    )
+            
+            elif selected_provider == "elevenlabs":
+                voice_col, speed_col = st.columns([1, 1])
+                with voice_col:
+                    selected_voice = st.text_input(
+                        tr("tts.voice_selector"),
+                        value=saved_voice,
+                        placeholder="21m00Tcm4TlvDq8ikWAM",
+                        help=tr("tts.elevenlabs_voice_help", fallback="Enter ElevenLabs voice ID"),
+                        key="tts_local_voice"
+                    )
+                with speed_col:
+                    tts_speed = st.slider(
+                        tr("tts.speed"), min_value=0.5, max_value=2.0,
+                        value=saved_speed, step=0.1, format="%.1fx",
+                        key="tts_local_speed"
+                    )
+            
+            elif selected_provider == "google_tts":
+                voice_col, speed_col = st.columns([1, 1])
+                with voice_col:
+                    selected_voice = st.text_input(
+                        tr("tts.voice_selector"),
+                        value=saved_voice,
+                        placeholder="en-US-Standard-A",
+                        help=tr("tts.google_voice_help", fallback="Enter Google Cloud TTS voice name"),
+                        key="tts_local_voice"
+                    )
+                with speed_col:
+                    tts_speed = st.slider(
+                        tr("tts.speed"), min_value=0.25, max_value=4.0,
+                        value=saved_speed, step=0.05, format="%.2fx",
+                        key="tts_local_speed"
+                    )
+            
+            else:
+                selected_voice = saved_voice
+                tts_speed = saved_speed
+            
+            # Auto-detect language and suggest voice (only for Edge TTS)
+            if selected_provider == "edge_tts":
+                from pixelle_video.lang_detect import detect_language, suggest_voice, get_language_name
+                script_text = st.session_state.get("content_text", "")
+                if script_text and len(script_text.strip()) > 10:
+                    detected_lang = detect_language(script_text)
+                    suggested_voice = suggest_voice(script_text, gender="female")
+                    lang_name = get_language_name(detected_lang)
+                    if suggested_voice and suggested_voice != selected_voice:
+                        st.info(
+                            f"🌐 {tr('tts.auto_detect_hint', fallback='Detected script language')}: **{lang_name}** → "
+                            f"{tr('tts.suggested_voice', fallback='Suggested voice')}: `{suggested_voice}`"
+                        )
             
             # Variables for video generation
             tts_workflow_key = None
@@ -157,6 +263,9 @@ def render_style_config(pixelle_video):
         # ComfyUI Mode UI
         # ================================================================
         else:  # comfyui mode
+            selected_provider = "edge_tts"
+            tts_api_key = ""
+            tts_model_value = ""
             # Get available TTS workflows
             tts_workflows = pixelle_video.tts.list_workflows()
             
@@ -895,11 +1004,25 @@ def render_style_config(pixelle_video):
             workflow_key = None
             prompt_prefix = ""
     
+    # Save TTS provider config to config_manager if in local mode
+    if tts_mode == "local":
+        tts_local_updates = {
+            "provider": selected_provider,
+            "voice": selected_voice,
+            "speed": tts_speed,
+        }
+        if tts_api_key:
+            tts_local_updates["tts_api_key"] = tts_api_key
+        if tts_model_value:
+            tts_local_updates["tts_model"] = tts_model_value
+        config_manager.update({"comfyui": {"tts": {"local": tts_local_updates}}})
+    
     # Return all style configuration parameters
     return {
         "tts_inference_mode": tts_mode,
         "tts_voice": selected_voice if tts_mode == "local" else None,
         "tts_speed": tts_speed if tts_mode == "local" else None,
+        "tts_provider": selected_provider if tts_mode == "local" else None,
         "tts_workflow": tts_workflow_key if tts_mode == "comfyui" else None,
         "ref_audio": str(ref_audio_path) if ref_audio_path else None,
         "frame_template": frame_template,

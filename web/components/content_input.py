@@ -14,6 +14,8 @@
 Content input components for web UI (left column)
 """
 
+from pathlib import Path
+
 import streamlit as st
 
 from web.i18n import tr
@@ -213,12 +215,37 @@ def render_bgm_section(key_prefix=""):
             st.warning(f"Failed to load BGM files: {e}")
             bgm_files = []
         
+        # Upload custom BGM option
+        upload_label = tr("bgm.upload", fallback="Upload custom music")
+        bgm_upload = st.file_uploader(
+            upload_label,
+            type=["mp3", "wav", "flac", "m4a", "aac", "ogg"],
+            help=tr("bgm.upload_help", fallback="Upload your own background music file (MP3/WAV/FLAC/M4A/AAC/OGG)"),
+            key=f"{key_prefix}bgm_upload"
+        )
+        
+        # Save uploaded file to bgm/ directory
+        uploaded_bgm_name = None
+        if bgm_upload is not None:
+            bgm_dir = Path("bgm")
+            bgm_dir.mkdir(exist_ok=True)
+            save_path = bgm_dir / bgm_upload.name
+            with open(save_path, "wb") as f:
+                f.write(bgm_upload.getbuffer())
+            uploaded_bgm_name = bgm_upload.name
+            if uploaded_bgm_name not in bgm_files:
+                bgm_files.append(uploaded_bgm_name)
+                bgm_files.sort()
+            st.success(tr("bgm.upload_success", fallback="Music uploaded!").replace("{file}", bgm_upload.name))
+        
         # Add special "None" option
         bgm_options = [tr("bgm.none")] + bgm_files
         
-        # Default to "default.mp3" if exists, otherwise first option
+        # Default to uploaded file if just uploaded, otherwise "default.mp3"
         default_index = 0
-        if "default.mp3" in bgm_files:
+        if uploaded_bgm_name and uploaded_bgm_name in bgm_options:
+            default_index = bgm_options.index(uploaded_bgm_name)
+        elif "default.mp3" in bgm_files:
             default_index = bgm_options.index("default.mp3")
         
         bgm_choice = st.selectbox(
@@ -256,6 +283,10 @@ def render_bgm_section(key_prefix=""):
                         st.error(tr("bgm.preview_failed", file=bgm_choice))
                 except Exception as e:
                     st.error(f"{tr('bgm.preview_failed', file=bgm_choice)}: {e}")
+        
+        # Free music resources links
+        with st.expander(tr("bgm.free_resources_title", fallback="Free Music Resources"), expanded=False):
+            st.markdown(tr("bgm.free_resources", fallback="Download royalty-free music from these sources"))
         
         # Use full filename for bgm_path (including extension)
         bgm_path = None if bgm_choice == tr("bgm.none") else bgm_choice

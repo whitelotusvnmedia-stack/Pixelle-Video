@@ -68,13 +68,14 @@ def render_style_config(pixelle_video):
             
             # Get saved voice from config
             local_config = tts_config.get("local", {})
-            saved_voice = local_config.get("voice", "zh-CN-YunjianNeural")
+            saved_voice = local_config.get("voice", "vi-VN-HoaiMyNeural")
             saved_speed = local_config.get("speed", 1.2)
             
-            # Build voice options with i18n
+            # Build voice options with i18n + custom option
             voice_options = []
             voice_ids = []
             default_voice_index = 0
+            custom_voice_label = tr("tts.voice.custom", fallback="Custom Voice ID...")
             
             for idx, voice_config in enumerate(EDGE_TTS_VOICES):
                 voice_id = voice_config["id"]
@@ -86,7 +87,15 @@ def render_style_config(pixelle_video):
                 if voice_id == saved_voice:
                     default_voice_index = idx
             
-            # Two-column layout: Voice | Speed
+            # Add custom voice option at the end
+            voice_options.append(custom_voice_label)
+            voice_ids.append("__custom__")
+            
+            # If saved voice not in presets, select custom
+            if saved_voice not in [v["id"] for v in EDGE_TTS_VOICES]:
+                default_voice_index = len(voice_options) - 1
+            
+            # Three-column layout: Voice | Custom Input | Speed
             voice_col, speed_col = st.columns([1, 1])
             
             with voice_col:
@@ -101,6 +110,18 @@ def render_style_config(pixelle_video):
                 # Get actual voice ID
                 selected_voice_index = voice_options.index(selected_voice_display)
                 selected_voice = voice_ids[selected_voice_index]
+                
+                # Show custom voice input if custom selected
+                if selected_voice == "__custom__":
+                    custom_voice_id = st.text_input(
+                        tr("tts.voice.custom_input", fallback="Edge TTS Voice ID"),
+                        value=saved_voice if saved_voice not in [v["id"] for v in EDGE_TTS_VOICES] else "",
+                        placeholder="vi-VN-HoaiMyNeural",
+                        help=tr("tts.voice.custom_help", fallback="Enter any Edge TTS voice ID, e.g. vi-VN-HoaiMyNeural"),
+                        key="tts_custom_voice_id"
+                    )
+                    if custom_voice_id:
+                        selected_voice = custom_voice_id
             
             with speed_col:
                 # Speed slider
@@ -114,6 +135,19 @@ def render_style_config(pixelle_video):
                     key="tts_local_speed"
                 )
                 st.caption(tr("tts.speed_label", speed=f"{tts_speed:.1f}"))
+            
+            # Auto-detect language and suggest voice
+            from pixelle_video.lang_detect import detect_language, suggest_voice, get_language_name
+            script_text = st.session_state.get("content_text", "")
+            if script_text and len(script_text.strip()) > 10:
+                detected_lang = detect_language(script_text)
+                suggested_voice = suggest_voice(script_text, gender="female")
+                lang_name = get_language_name(detected_lang)
+                if suggested_voice and suggested_voice != selected_voice:
+                    st.info(
+                        f"🌐 {tr('tts.auto_detect_hint', fallback='Detected script language')}: **{lang_name}** → "
+                        f"{tr('tts.suggested_voice', fallback='Suggested voice')}: `{suggested_voice}`"
+                    )
             
             # Variables for video generation
             tts_workflow_key = None

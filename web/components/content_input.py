@@ -59,6 +59,9 @@ def render_content_input():
                 help=text_help
             )
             
+            # Store text in session state for auto-detect voice language
+            st.session_state["content_text"] = text
+            
             # Split mode selector (only show in fixed mode)
             if mode == "fixed":
                 split_mode_options = {
